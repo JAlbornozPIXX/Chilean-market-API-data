@@ -1,0 +1,65 @@
+erDiagram
+    DIM_TIEMPO ||--o{ FACT_LICITACION : "tiempo_key"
+    DIM_ORGANISMO |o--o{ FACT_LICITACION : "organismo_key"
+    DIM_ESTADO_LICITACION ||--o{ FACT_LICITACION : "codigo_estado"
+    DIM_MONEDA |o--o{ FACT_LICITACION : "moneda_codigo"
+    DIM_TIEMPO ||--o{ FACT_INDICADOR_ECONOMICO : "tiempo_key"
+    DIM_SERIE ||--o{ FACT_INDICADOR_ECONOMICO : "serie_key"
+    DIM_MONEDA |o..o| DIM_SERIE : "serie_id_bcch (cruce)"
+
+    FACT_LICITACION {
+        varchar codigo_externo PK "grano: 1 fila por licitacion"
+        int tiempo_key FK "fecha de movimiento"
+        int organismo_key FK
+        int codigo_estado FK
+        varchar moneda_codigo FK
+        varchar tipo
+        numeric monto_estimado_original
+        numeric monto_estimado_clp
+        numeric monto_estimado_uf
+        int dias_publicacion_cierre
+        int cantidad_items
+    }
+    FACT_INDICADOR_ECONOMICO {
+        int tiempo_key PK, FK "grano: serie x dia"
+        int serie_key PK, FK
+        numeric valor
+        numeric variacion_diaria_pct
+    }
+    DIM_TIEMPO {
+        int tiempo_key PK "yyyymmdd"
+        date fecha UK
+        smallint anio
+        smallint trimestre
+        smallint mes
+        varchar nombre_mes
+        smallint dia
+        smallint dia_semana
+        boolean es_fin_semana
+        char anio_mes
+    }
+    DIM_ORGANISMO {
+        int organismo_key PK "subrogada (SERIAL)"
+        varchar codigo_organismo UK "natural"
+        text nombre_organismo
+        varchar region
+    }
+    DIM_ESTADO_LICITACION {
+        int codigo_estado PK
+        varchar estado
+        boolean es_final
+        boolean es_exitoso
+    }
+    DIM_MONEDA {
+        varchar moneda_codigo PK
+        varchar descripcion
+        varchar serie_id_bcch "serie BCCh para convertir"
+    }
+    DIM_SERIE {
+        int serie_key PK "subrogada (SERIAL)"
+        varchar serie_id UK "natural"
+        varchar nombre
+        varchar unidad
+        varchar moneda_codigo
+        varchar frecuencia
+    }

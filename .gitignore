@@ -1,0 +1,26 @@
+# ---- Secretos: NUNCA se suben (ver "Reglas de oro" en README.md) ----
+.env
+
+# ---- Proyecto COMPLETO de referencia (copia local): NUNCA se sube ----
+# El repositorio es público: cada integrante sube solo su parte a proyecto_etl/ mediante su PR.
+# A los compañeros se les comparte por canal privado (zip), no por GitHub.
+referencia/
+
+# ---- Generados al ejecutar ----
+logs/
+__pycache__/
+*.pyc
+*.dump
+
+# ---- DAGs de laboratorio para experimentar (Issue 1, Paso 8): no se versionan ----
+proyecto_etl/dags/lab_*.py
+
+# ---- Entornos virtuales de Python ----
+.venv/
+.venv_docs/
+venv/
+
+# ---- Sistema operativo y editores ----
+.DS_Store
+Thumbs.db
+.idea/

@@ -1,2 +1,21 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Archivos que se ejecutan dentro de contenedores Linux: siempre con fin de línea LF.
+# Un .sh con CRLF (Windows) rompe la inicialización de PostgreSQL ("$'\r': command not found").
+*.sh   text eol=lf
+*.sql  text eol=lf
+*.py   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+.env.example   text eol=lf
+.airflowignore text eol=lf
+
+# Binarios: nunca convertir ni intentar mezclar línea a línea
+*.png  binary
+*.jpg  binary
+*.pdf  binary
+*.pptx binary
+*.docx binary
+*.zip  binary
+*.dump binary
