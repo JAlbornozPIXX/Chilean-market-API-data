@@ -25,18 +25,20 @@ docker-compose.yml, .env.example, requirements.txt
 
 ## Requisitos
 - Docker Desktop con al menos 4 GB de RAM (en Windows, con WSL2) y los puertos 8080 y 5433 libres.
-- Credenciales propias: ticket de Mercado Público y usuario **activado** de la API del Banco Central.
+- Credenciales propias: ticket de Mercado Público y token **activado** de la API del Banco Central
+  (registro en https://si3.bcentral.cl/Siete/es/Siete/API).
 
 ## Cómo ejecutar
 1. Requisitos: Docker + Docker Compose (ver sección anterior).
-2. `cp .env.example .env` y completar claves (`MP_TICKET`, `BCCH_USER`, `BCCH_PASS`, contraseñas). **`.env` no se entrega.**
+2. `cp .env.example .env` y completar claves (`MP_TICKET`, `BCCH_TOKEN`, contraseñas). **`.env` no se entrega.**
+   El token del BCCh contiene `$`: escribirlo entre comillas simples (`BCCH_TOKEN='...'`).
 3. `docker compose up -d` → el DDL se aplica automáticamente al crear la BD (`sql/ddl`).
    Si la BD ya existía: `psql -h localhost -p 5433 -U etl dw_gestion -f sql/ddl/01_modelo.sql`.
 4. Airflow en http://localhost:8080 (usuario/clave de `.env`). Activar (unpause) los 3 DAGs.
 5. Opcional (tope de detalles por día para la cuota):
    `docker compose exec airflow-scheduler airflow variables set mp_max_detalle 150`
 
-La Connection `dw_postgres` y las Variables `mp_ticket`, `bcch_user`, `bcch_pass` se crean
+La Connection `dw_postgres` y las Variables `mp_ticket`, `bcch_token` se crean
 desde el entorno (`AIRFLOW_CONN_DW_POSTGRES`, `AIRFLOW_VAR_*`); no hay claves en el código.
 
 ## Verificar que todo quedó bien

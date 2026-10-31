@@ -16,8 +16,7 @@ x-airflow: &airflow
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/airflow_meta
     # Airflow Connection (BD destino) y Variables (claves de API) desde el entorno
     AIRFLOW_CONN_DW_POSTGRES: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-    AIRFLOW_VAR_BCCH_USER: ${BCCH_USER}
-    AIRFLOW_VAR_BCCH_PASS: ${BCCH_PASS}
+    AIRFLOW_VAR_BCCH_TOKEN: ${BCCH_TOKEN}
     AIRFLOW_VAR_MP_TICKET: ${MP_TICKET}
   volumes:
     - ./dags:/opt/airflow/dags
