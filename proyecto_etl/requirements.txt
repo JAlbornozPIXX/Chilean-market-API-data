@@ -1,0 +1,10 @@
+# incluidas en la imagen apache/airflow:3.3.2-python3.11 (docker-compose.yml)
+apache-airflow==3.3.2
+apache-airflow-providers-celery
+apache-airflow-providers-fab
+apache-airflow-providers-postgres
+pandas
+sqlalchemy
+psycopg2-binary
+requests>=2.31
+pendulum
