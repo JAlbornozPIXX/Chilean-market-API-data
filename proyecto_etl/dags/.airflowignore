@@ -1,0 +1,6 @@
+# airflow 3 usa sintaxis glob en .airflowignore
+# modulos de apoyo: no definen dags (se importan desde los dag_pipeline_*.py)
+pipeline_*.py
+comun_airflow.py
+# archivos intermedios entre tareas (pickles)
+salida/
