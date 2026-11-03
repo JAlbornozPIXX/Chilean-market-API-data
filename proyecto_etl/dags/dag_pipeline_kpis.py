@@ -8,9 +8,9 @@ con el ultimo dato valido de la caida; los tres dags son independientes.
 from datetime import datetime, timedelta, timezone
 
 import pendulum
-from airflow.sdk import dag, get_current_context, task
 
 import comun_airflow as af
+from comun_airflow import dag, get_current_context, task
 
 
 @dag(

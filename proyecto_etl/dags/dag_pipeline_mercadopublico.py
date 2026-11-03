@@ -17,9 +17,9 @@ al terminar la carga publica ASSET_MP, que dispara el dag de indicadores.
 from datetime import date, datetime, timedelta, timezone
 
 import pendulum
-from airflow.sdk import Param, Variable, dag, get_current_context, task
 
 import comun_airflow as af
+from comun_airflow import Param, dag, get_current_context, task
 
 CARPETA = "tmp_mercadopublico"
 
@@ -27,7 +27,8 @@ CARPETA = "tmp_mercadopublico"
 def _rango(context: dict) -> tuple[date, date]:
     """rango a procesar en hora de chile: los params o el dia anterior a la fecha del run.
 
-    en airflow 3 el cron no tiene intervalo, por eso el run de las 06:00 procesa el dia anterior.
+    en airflow 3 el cron no tiene intervalo, por eso el run de las 06:00 procesa el dia anterior a su fecha
+    logica; en airflow 2 la fecha programada es el fin del intervalo (ver af.momento_programado).
     nunca pasa de hoy: la api rechaza fechas futuras ("La fecha es mayor a la actual").
     """
     hoy = pendulum.now("America/Santiago").date()
@@ -37,7 +38,7 @@ def _rango(context: dict) -> tuple[date, date]:
         desde = date.fromisoformat(params["fecha_desde"])
         hasta = date.fromisoformat(params["fecha_hasta"]) if params.get("fecha_hasta") else desde
         return desde, min(hasta, hoy)
-    momento = context.get("logical_date") or context.get("data_interval_start")
+    momento = af.momento_programado(context, alternativa="data_interval_start")
     dia = (momento.in_timezone("America/Santiago").date() if momento else hoy) - timedelta(days=1)
     return dia, dia
 
@@ -46,7 +47,7 @@ def _url() -> str:
     """url de la api: la variable mp_base_url o la oficial."""
     import pipeline_mercadopublico as p
 
-    return Variable.get("mp_base_url", default=p.MP_URL)
+    return af.variable("mp_base_url", p.MP_URL)
 
 
 @dag(
@@ -102,7 +103,7 @@ def pipeline_mercadopublico_etl() -> None:
 
         listados = p.extract_listados(ticket, desde, hasta, url)
         p.load_raw_listados(engine, listados, context["run_id"])
-        max_detalle = int(Variable.get("mp_max_detalle", default=p.MAX_DETALLE))
+        max_detalle = int(af.variable("mp_max_detalle", p.MAX_DETALLE))
         pendientes = p.codigos_pendientes(engine, listados, desde, hasta, max_detalle)
         descargados, omitidos = p.extract_detalles(engine, ticket, pendientes, context["run_id"], url)
         af.auditar(

@@ -14,9 +14,9 @@ al terminar la carga publica ASSET_BCCH, que dispara el dag de indicadores.
 from datetime import date, datetime, timedelta, timezone
 
 import pendulum
-from airflow.sdk import Param, Variable, dag, get_current_context, task
 
 import comun_airflow as af
+from comun_airflow import Param, dag, get_current_context, task
 
 CARPETA = "tmp_bcch"
 
@@ -30,7 +30,7 @@ def _rango(context: dict) -> tuple[date, date]:
         desde = date.fromisoformat(params["fecha_desde"])
         hasta = date.fromisoformat(params["fecha_hasta"]) if params.get("fecha_hasta") else hoy
         return desde, min(hasta, hoy)
-    momento = context.get("logical_date") or context.get("data_interval_end")
+    momento = af.momento_programado(context, alternativa="data_interval_end")
     hasta = min(momento.in_timezone("America/Santiago").date(), hoy) if momento else hoy
     return hasta - timedelta(days=7), hasta
 
@@ -76,7 +76,7 @@ def pipeline_bcch_etl() -> None:
     def validar_api() -> None:
         import pipeline_bcch as p
 
-        p.validar_api(af.credencial("bcch_token"), Variable.get("bcch_base_url", default=p.BCCH_URL))
+        p.validar_api(af.credencial("bcch_token"), af.variable("bcch_base_url", p.BCCH_URL))
 
     @task
     def extract() -> None:
@@ -84,7 +84,7 @@ def pipeline_bcch_etl() -> None:
 
         context, inicio = get_current_context(), datetime.now(timezone.utc)
         desde, hasta = _rango(context)
-        url = Variable.get("bcch_base_url", default=p.BCCH_URL)
+        url = af.variable("bcch_base_url", p.BCCH_URL)
         raw = p.extract_series(af.credencial("bcch_token"), desde, hasta, url)
         filas = p.load_raw(af.engine(), raw, context["run_id"])
         af.auditar(

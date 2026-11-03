@@ -2,7 +2,7 @@
 
 Solución de analítica de datos para medir la **gestión de las compras públicas del Estado de Chile**:
 
-- **Procesos ETL en Python** orquestados con **Apache Airflow 2.10**.
+- **Procesos ETL en Python** orquestados con **Apache Airflow 3** (imagen `apache/airflow:3.3.2` en [`proyecto_etl/docker-compose.yml`](proyecto_etl/docker-compose.yml)). Los DAGs también corren en Airflow 2.10 (ver [«Compatibilidad con Airflow 2.x»](proyecto_etl/README.md#compatibilidad-con-airflow-2x)).
 - Consumen dos APIs públicas chilenas: **Mercado Público (ChileCompra)** y **Banco Central de Chile**.
 - Cargan un **modelo dimensional en PostgreSQL** por capas (`raw → staging → dw → mart`, más `audit`).
 - Calculan **6 indicadores de gestión (KPIs)**.

@@ -55,6 +55,32 @@ Variables opcionales: `mp_base_url`, `bcch_base_url` (URL de cada API) y `mp_max
 No hay claves en el código: se leen de la Connection y las Variables al ejecutar cada tarea y se
 enmascaran (`***`) en los logs.
 
+## Compatibilidad con Airflow 2.x
+Los DAGs están escritos para Airflow 3 (el `docker-compose.yml` usa `apache/airflow:3.3.2-python3.11`) y también corren en
+**Airflow 2.10** (probado con 2.10.5, Python 3.11, PostgreSQL 16). Todo lo que cambia entre versiones está en
+`dags/comun_airflow.py`: los DAGs importan `dag`, `task`, `Param`, `Asset`, etc. desde ese módulo y no desde `airflow`.
+
+| | Airflow 3.x | Airflow 2.10 |
+|---|---|---|
+| Imports | `airflow.sdk` | `airflow.decorators`, `airflow.models`, `airflow.datasets` |
+| Disparo del DAG de KPIs | `Asset` con condición OR (`ASSET_BCCH \| ASSET_MP`) | `Dataset` con la misma condición OR |
+| Fecha de un run programado | el cron no tiene intervalo: `logical_date` es la hora programada | `logical_date` es el inicio del intervalo; la hora programada es `data_interval_end` |
+| Recarga de un rango | `airflow backfill create ...` | `airflow dags backfill -s INICIO -e FIN <dag_id>` |
+
+En ambas versiones el run programado de Mercado Público procesa **el día anterior a la hora en que corre** y el del Banco
+Central una ventana de 7 días hasta esa hora; `momento_programado()` en `comun_airflow.py` unifica las dos semánticas.
+
+Para usar el proyecto en un Docker con Airflow 2.10 (por ejemplo `apache/airflow:2.10.5-python3.11`):
+1. Montar `dags/` y `sql/`, y tener una base PostgreSQL con el DDL de `sql/ddl/01_modelo.sql`.
+2. Python 3.10 o superior, con `apache-airflow-providers-postgres`, `pandas`, `requests` y `psycopg2-binary`
+   (si la imagen no los trae: `pip install pandas requests psycopg2-binary apache-airflow-providers-postgres`).
+3. Registrar la Connection y las Variables:
+   `airflow connections add dw_postgres --conn-type postgres --conn-host <host> --conn-port 5432 --conn-schema etl_bcc --conn-login <usuario> --conn-password <clave>`
+   y `airflow variables set mp_ticket <ticket>` / `airflow variables set bcch_token <token>`.
+4. Activar (unpause) los 3 DAGs. La recarga de un rango en 2.10 es, por ejemplo:
+   `airflow dags backfill -s 2026-10-01 -e 2026-10-12 pipeline_mercadopublico_etl` (un run por día; cada run procesa
+   el día de su fecha lógica).
+
 ## Indicadores de gestión (`sql/kpi/kpis.sql` -> `mart.kpi_mensual`)
 Pregunta de gestión: ¿qué tan eficiente, competitivo y transparente es el proceso de licitaciones del
 Estado y cuánto se licita en términos reales? Todos se calculan **por mes** (`anio_mes` de la fecha de
@@ -94,6 +120,7 @@ docker compose cp postgres:/tmp/etl_bcc.dump ../respaldo_etl_bcc.dump
 ```
 
 ## Recarga de un rango pasado
+(Comandos de Airflow 3. Para Airflow 2.10 ver «Compatibilidad con Airflow 2.x».)
 - UI: **Trigger** (Run Parameters) -> `{"fecha_desde": "2026-10-01", "fecha_hasta": "2026-10-13"}` (ambos ETL).
 - UI: **Trigger -> Backfill**, o por CLI (un run por día del rango):
   `docker compose exec airflow-scheduler airflow backfill create --dag-id pipeline_mercadopublico_etl --from-date 2026-10-01 --to-date 2026-10-13 --reprocess-behavior completed --max-active-runs 1`

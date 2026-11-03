@@ -2,14 +2,39 @@
 
 conexion a la base (connection dw_postgres), credenciales enmascaradas en los logs,
 archivos intermedios entre tareas, auditoria en audit.etl_audit y callbacks de falla y reintento.
+
+compatibilidad de versiones: el proyecto corre en airflow 3.x (docker-compose.yml usa 3.3.2) y tambien
+en airflow 2.x a partir de 2.10 (por los assets con condicion OR, que son datasets en 2.x).
+todo lo que cambia entre versiones esta en este modulo: los dags importan dag, task, Param, etc.
+desde aqui y nunca desde airflow directamente.
 """
 
 import logging
 from pathlib import Path
 
-from airflow.sdk import Asset, Connection, Variable
-from airflow.sdk.log import mask_secret
 from sqlalchemy.engine import Engine
+
+try:  # airflow 3.x: task sdk
+    from airflow.sdk import Asset, Connection, Param, Variable, dag, get_current_context, task
+    from airflow.sdk.log import mask_secret
+
+    AIRFLOW_3 = True
+except ImportError:  # airflow 2.x (>= 2.10)
+    from airflow.datasets import Dataset as Asset
+    from airflow.decorators import dag, task
+    from airflow.hooks.base import BaseHook
+    from airflow.models import Variable
+    from airflow.models.param import Param
+    from airflow.operators.python import get_current_context
+    from airflow.utils.log.secrets_masker import mask_secret
+
+    AIRFLOW_3 = False
+
+__all__ = [
+    "AIRFLOW_3", "ASSET_BCCH", "ASSET_MP", "Param", "auditar", "conexion", "credencial", "dag", "engine",
+    "get_current_context", "guardar", "leer", "momento_programado", "on_failure_callback", "on_retry_callback",
+    "task", "variable",
+]  # fmt: skip
 
 log = logging.getLogger(__name__)
 
@@ -37,11 +62,37 @@ def leer(carpeta: str, nombre: str) -> object:
     return pd.read_pickle(SALIDA / carpeta / f"{nombre}.pkl")
 
 
+def conexion(conn_id: str) -> object:
+    """connection de airflow (host, port, schema, login y password en ambas versiones)."""
+    return Connection.get(conn_id) if AIRFLOW_3 else BaseHook.get_connection(conn_id)
+
+
+def variable(clave: str, default: object = None) -> object:
+    """variable de airflow; si no existe devuelve default (el argumento se llama distinto en 2.x y 3.x)."""
+    if AIRFLOW_3:
+        return Variable.get(clave, default=default)
+    return Variable.get(clave, default_var=default)
+
+
+def momento_programado(context: dict, alternativa: str = "data_interval_start") -> object:
+    """fecha y hora en que el cron programo el run; none si el run es manual.
+
+    airflow 3: el cron no tiene intervalo, asi que logical_date es la hora programada.
+    airflow 2: logical_date es el inicio del intervalo; la hora programada es el fin del intervalo
+    (data_interval_end) y un run manual no tiene hora programada.
+    """
+    if AIRFLOW_3:
+        return context.get("logical_date") or context.get(alternativa)
+    if context["dag_run"].run_type == "manual":
+        return None
+    return context.get("data_interval_end")
+
+
 def engine() -> Engine:
     """engine de sqlalchemy con los datos de la connection dw_postgres."""
     import pipeline_bcch as p
 
-    c = Connection.get("dw_postgres")
+    c = conexion("dw_postgres")
     return p.get_engine(host=c.host, port=c.port, database=c.schema, user=c.login, password=c.password)
 
 
