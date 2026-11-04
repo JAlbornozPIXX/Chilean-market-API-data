@@ -79,7 +79,8 @@ services:
           --conn-port 5432 --conn-schema "$${POSTGRES_DB}" --conn-login "$${POSTGRES_USER}" \
           --conn-password "$${POSTGRES_PASSWORD}"
         /entrypoint airflow variables set mp_ticket "$${MP_TICKET}" >/dev/null
-        if [ -n "$${BCCH_TOKEN}" ]; then /entrypoint airflow variables set bcch_token "$${BCCH_TOKEN}" >/dev/null; fi
+        if [ -n "$${BCCH_USER}" ]; then /entrypoint airflow variables set bcch_user "$${BCCH_USER}" >/dev/null; fi
+        if [ -n "$${BCCH_PASS}" ]; then /entrypoint airflow variables set bcch_password "$${BCCH_PASS}" >/dev/null; fi
         echo "Connection dw_postgres y Variables registradas"
     environment:
       <<: *airflow-common-env
@@ -91,7 +92,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
       MP_TICKET: ${MP_TICKET}
-      BCCH_TOKEN: ${BCCH_TOKEN:-}
+      BCCH_USER: ${BCCH_USER:-}
+      BCCH_PASS: ${BCCH_PASS:-}
     user: "0:0"
     restart: "no"
 

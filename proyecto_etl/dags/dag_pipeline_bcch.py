@@ -6,7 +6,7 @@ recarga de un rango pasado: trigger con {"fecha_desde": "2024-01-01", "fecha_has
 
 configuracion en airflow (ninguna credencial en el codigo):
   - connection dw_postgres: base postgresql destino
-  - variable bcch_token: token de la api del bcch
+  - variables bcch_user y bcch_password: usuario y clave de la api del bcch (se enmascaran en los logs)
   - variable bcch_base_url (opcional): url de la api; una incorrecta provoca la falla controlada
 al terminar la carga publica ASSET_BCCH, que dispara el dag de indicadores.
 """
@@ -76,7 +76,9 @@ def pipeline_bcch_etl() -> None:
     def validar_api() -> None:
         import pipeline_bcch as p
 
-        p.validar_api(af.credencial("bcch_token"), af.variable("bcch_base_url", p.BCCH_URL))
+        p.validar_api(
+            af.credencial("bcch_user"), af.credencial("bcch_password"), af.variable("bcch_base_url", p.BCCH_URL)
+        )
 
     @task
     def extract() -> None:
@@ -85,7 +87,7 @@ def pipeline_bcch_etl() -> None:
         context, inicio = get_current_context(), datetime.now(timezone.utc)
         desde, hasta = _rango(context)
         url = af.variable("bcch_base_url", p.BCCH_URL)
-        raw = p.extract_series(af.credencial("bcch_token"), desde, hasta, url)
+        raw = p.extract_series(af.credencial("bcch_user"), af.credencial("bcch_password"), desde, hasta, url)
         filas = p.load_raw(af.engine(), raw, context["run_id"])
         af.auditar(
             context,

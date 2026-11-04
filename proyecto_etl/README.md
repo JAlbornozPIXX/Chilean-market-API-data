@@ -6,7 +6,7 @@ chilenas, carga PostgreSQL 16 por capas (`raw -> staging -> dw -> mart`, más `a
 | Fuente | Endpoint | Credencial |
 |---|---|---|
 | Mercado Público (ChileCompra) | `https://api.mercadopublico.cl/servicios/v1/publico/licitaciones.json` | Ticket (se pide con Clave Única en https://www.chilecompra.cl/api/) |
-| Banco Central de Chile (BDE) | `https://si3.bcentral.cl/SieteRestWS/SieteRestWS.ashx` | Token de la API (registro en https://si3.bcentral.cl/Siete/es/Siete/API) |
+| Banco Central de Chile (BDE) | `https://si3.bcentral.cl/SieteRestWS/SieteRestWS.ashx` | Usuario (correo) y clave de la API (registro en https://si3.bcentral.cl/Siete/es/Siete/API) |
 
 ## Estructura
 ```
@@ -34,19 +34,24 @@ Al terminar bien, `load` publica su Asset y eso dispara `pipeline_kpis_gestion`
 
 ## Requisitos
 - Docker Desktop con al menos 4 GB de RAM (en Windows, con WSL2) y los puertos 8080 y 5433 libres.
-- Credenciales propias: ticket de Mercado Público y token **activado** de la API del Banco Central.
+  Es lo único que hay que instalar: Airflow, PostgreSQL, Redis y todas las librerías vienen en las imágenes.
+  En Windows: `winget install Docker.DockerDesktop` y `wsl --install --no-distribution`, y reiniciar.
+- Credenciales propias: ticket de Mercado Público y usuario/clave **activados** de la API del Banco Central.
+- Opcional, solo para ejecutar un `pipeline_*.py` fuera de Airflow o inspeccionar la base: Python 3.11 o superior
+  y `pip install -r requirements.txt` (ver "Ejecutar un ETL sin Airflow").
 
 ## Cómo ejecutar
-1. `cp .env.example .env` y completar claves (`MP_TICKET`, `BCCH_TOKEN`, contraseñas). **`.env` no se entrega.**
-   El token del BCCh contiene `$`: escribirlo entre comillas simples (`BCCH_TOKEN='...'`).
-2. Generar las dos claves de Airflow y ponerlas en `.env` (una sola vez; no cambiarlas después):
+1. `cp .env.example .env` y completar claves (`MP_TICKET`, `BCCH_USER`, `BCCH_PASS`, contraseñas). **`.env` no se entrega.**
+   Si la clave del BCCh contiene `$`, escribirla entre comillas simples (`BCCH_PASS='...'`).
+2. Generar las dos claves de Airflow y ponerlas en `.env` (una sola vez; no cambiarlas después).
+   Ambas son 32 bytes aleatorios; no hace falta instalar nada, basta Python:
    ```bash
-   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"   # AIRFLOW_FERNET_KEY
-   python -c "import secrets; print(secrets.token_urlsafe(32))"                                # AIRFLOW_JWT_SECRET
+   python -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"   # AIRFLOW_FERNET_KEY
+   python -c "import secrets; print(secrets.token_urlsafe(32))"                              # AIRFLOW_JWT_SECRET
    ```
 3. `docker compose up -d`. Al crear la base se aplica el DDL (`sql/ddl`) y `airflow-init` migra la base
    de metadatos, crea el usuario admin y registra la Connection `dw_postgres` y las Variables
-   `mp_ticket` y `bcch_token` (visibles en Admin -> Connections / Variables, cifradas con la Fernet key).
+   `mp_ticket`, `bcch_user` y `bcch_password` (visibles en Admin -> Connections / Variables, cifradas con la Fernet key).
 4. Airflow en http://localhost:8080 (usuario/clave de `.env`). Activar (unpause) los 3 DAGs.
 5. Opcional (tope de detalles por run para cuidar la cuota de 10.000 consultas diarias del ticket):
    `docker compose exec airflow-scheduler airflow variables set mp_max_detalle 150`
@@ -76,7 +81,7 @@ Para usar el proyecto en un Docker con Airflow 2.10 (por ejemplo `apache/airflow
    (si la imagen no los trae: `pip install pandas requests psycopg2-binary apache-airflow-providers-postgres`).
 3. Registrar la Connection y las Variables:
    `airflow connections add dw_postgres --conn-type postgres --conn-host <host> --conn-port 5432 --conn-schema etl_bcc --conn-login <usuario> --conn-password <clave>`
-   y `airflow variables set mp_ticket <ticket>` / `airflow variables set bcch_token <token>`.
+   y `airflow variables set mp_ticket <ticket>` / `airflow variables set bcch_user <correo>` / `airflow variables set bcch_password <clave>`.
 4. Activar (unpause) los 3 DAGs. La recarga de un rango en 2.10 es, por ejemplo:
    `airflow dags backfill -s 2026-10-01 -e 2026-10-12 pipeline_mercadopublico_etl` (un run por día; cada run procesa
    el día de su fecha lógica).
@@ -153,7 +158,22 @@ Todas las consultas de evidencia del informe:
 `docker compose exec -T postgres psql -U etl -d etl_bcc < sql/consultas/consultas_evidencia.sql`
 
 ## Ejecutar un ETL sin Airflow
-Cada `pipeline_*.py` tiene un `main()` que ejecuta todas sus etapas en orden (útil para depurar):
+Cada `pipeline_*.py` tiene un `main()` que ejecuta todas sus etapas en orden (útil para depurar). Necesita el
+stack levantado (`docker compose up -d`) porque escribe en la base del puerto 5433.
+
+PowerShell:
+```powershell
+python -m venv .venv; .venv\Scripts\python -m pip install -r requirements.txt
+$env:PYTHONUTF8 = "1"        # evita que la consola de Windows muestre mal las tildes
+$env:PGHOST = "localhost"; $env:PGPORT = "5433"; $env:PGDATABASE = "etl_bcc"
+$env:PGUSER = "etl"; $env:PGPASSWORD = "<clave>"; $env:MP_TICKET = "<ticket>"
+.venv\Scripts\python dags\pipeline_kpis.py                                   # no gasta cuota de ninguna API
+.venv\Scripts\python dags\pipeline_mercadopublico.py 2026-10-05 2026-10-06   # desde, hasta (por defecto, ayer)
+```
+
+Bash:
 ```bash
-PGHOST=localhost PGPORT=5433 PGDATABASE=etl_bcc PGUSER=etl PGPASSWORD=<clave> MP_TICKET=<ticket> python dags/pipeline_mercadopublico.py
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+PGHOST=localhost PGPORT=5433 PGDATABASE=etl_bcc PGUSER=etl PGPASSWORD=<clave> MP_TICKET=<ticket> \
+  .venv/bin/python dags/pipeline_mercadopublico.py 2026-10-05 2026-10-06
 ```

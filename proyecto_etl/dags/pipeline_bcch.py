@@ -6,8 +6,9 @@ mart (lo llena el dag de indicadores) y audit (una fila por tarea).
 etapas: validar -> extract -> transform -> calidad -> load. cada etapa es una funcion;
 main() las ejecuta en orden y dag_pipeline_bcch.py convierte cada una en una tarea.
 
-sin credenciales en el codigo: en airflow se usan la variable bcch_token y la connection
-dw_postgres; fuera de airflow se leen BCCH_TOKEN y PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD.
+sin credenciales en el codigo: la api autentica con usuario y clave (parametros user y pass).
+en airflow se usan las variables bcch_user y bcch_password y la connection dw_postgres; fuera de
+airflow se leen BCCH_USER, BCCH_PASS y PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD.
 
 uso: python pipeline_bcch.py [fecha_desde] [fecha_hasta]   (por defecto 2024-01-01 a hoy)
 """
@@ -27,7 +28,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import URL, Engine
 from urllib3.util.retry import Retry
 
-# api del banco central (token gratuito en https://si3.bcentral.cl/Siete/es/Siete/API)
+# api del banco central (usuario y clave gratuitos en https://si3.bcentral.cl/Siete/es/Siete/API)
 BCCH_URL = "https://si3.bcentral.cl/SieteRestWS/SieteRestWS.ashx"
 HTTP_TIMEOUT = (10, 60)  # segundos de conexion y de lectura
 PAUSA_ENTRE_LLAMADAS = 1.0  # segundos entre consultas para respetar el limite de uso
@@ -197,46 +198,50 @@ def http_session(reintentos: int = 4) -> requests.Session:
 
 
 def consultar_serie(
-    sesion: requests.Session, url: str, token: str, serie: str, desde: date, hasta: date
+    sesion: requests.Session, url: str, usuario: str, clave: str, serie: str, desde: date, hasta: date
 ) -> tuple[int, dict]:
     """una consulta GetSeries; la api entrega todo el rango en una respuesta (no pagina)."""
     time.sleep(PAUSA_ENTRE_LLAMADAS)
     params = {
-        "token": token,
+        "user": usuario,
+        "pass": clave,
         "function": "GetSeries",
         "timeseries": serie,
         "firstdate": desde.isoformat(),
         "lastdate": hasta.isoformat(),
     }
     resp = sesion.get(url, timeout=HTTP_TIMEOUT, params=params)
-    # no se usa raise_for_status(): su mensaje incluiria la url con el token
+    # no se usa raise_for_status(): su mensaje incluiria la url con el usuario y la clave
     if resp.status_code >= 400:
         raise requests.HTTPError(f"HTTP {resp.status_code} en {url}: {resp.text[:200]}", response=resp)
     try:
         payload = resp.json()
     except ValueError as exc:
         raise ValueError(f"La API no devolvio JSON: {resp.text[:200]}") from exc
-    # la api responde http 200 tambien con errores de negocio (token invalido, serie inexistente)
+    # la api responde http 200 tambien con errores de negocio (clave invalida, serie inexistente)
     if payload.get("Codigo") != 0:
         raise ValueError(f"API BCCh serie {serie}: {payload.get('Codigo')} {payload.get('Descripcion')}")
     return resp.status_code, payload
 
 
-def validar_api(token: str, url: str = BCCH_URL) -> None:
-    """comprueba con una consulta corta que la api responde y el token es valido."""
-    if not token:
-        raise ValueError("Falta el token de la API del BCCh (Variable bcch_token o BCCH_TOKEN)")
+def validar_api(usuario: str, clave: str, url: str = BCCH_URL) -> None:
+    """comprueba con una consulta corta que la api responde y las credenciales son validas."""
+    if not usuario or not clave:
+        raise ValueError(
+            "Faltan el usuario o la clave de la API del BCCh (Variables bcch_user y bcch_password, "
+            "o BCCH_USER y BCCH_PASS)"
+        )
     hoy = date.today()
-    consultar_serie(http_session(reintentos=1), url, token, SERIE_VALIDACION, hoy.replace(day=1), hoy)
-    log.info("validar_api: API BCCh disponible y token valido")
+    consultar_serie(http_session(reintentos=1), url, usuario, clave, SERIE_VALIDACION, hoy.replace(day=1), hoy)
+    log.info("validar_api: API BCCh disponible y credenciales validas")
 
 
-def extract_series(token: str, desde: date, hasta: date, url: str = BCCH_URL) -> pd.DataFrame:
+def extract_series(usuario: str, clave: str, desde: date, hasta: date, url: str = BCCH_URL) -> pd.DataFrame:
     """una llamada por serie; devuelve las respuestas completas para la capa raw."""
     filas = []
     with http_session() as sesion:
         for serie in SERIES:
-            estado, payload = consultar_serie(sesion, url, token, serie, desde, hasta)
+            estado, payload = consultar_serie(sesion, url, usuario, clave, serie, desde, hasta)
             log.info(
                 "extract_series: %-20s %s observaciones (%s a %s)",
                 serie, f"{len(_observaciones(payload)):,}", desde, hasta,
@@ -464,11 +469,11 @@ COLUMNAS_AUDITORIA = [
     "dag_id", "task_id", "run_id", "tabla_destino", "filas_leidas", "filas_cargadas", "filas_rechazadas",
     "pct_nulos", "inicio", "fin", "duracion_seg", "estado", "intento", "mensaje",
 ]  # fmt: skip
-CREDENCIAL_EN_URL = re.compile(r"((?:token|ticket)=)[^&\s'\"]+", re.IGNORECASE)
+CREDENCIAL_EN_URL = re.compile(r"((?:token|ticket|user|pass)=)[^&\s'\"]+", re.IGNORECASE)
 
 
 def ocultar_credenciales(texto: str | None) -> str | None:
-    """reemplaza por *** el token o ticket que traen las urls de los errores de conexion."""
+    """reemplaza por *** el ticket, usuario o clave que traen las urls de los errores de conexion."""
     return CREDENCIAL_EN_URL.sub(r"\1***", texto) if texto else texto
 
 
@@ -497,16 +502,16 @@ def main() -> None:
     """ejecuta todas las etapas en orden para el rango de fechas recibido."""
     desde = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else FECHA_INICIO
     hasta = date.fromisoformat(sys.argv[2]) if len(sys.argv) > 2 else date.today()
-    token = os.getenv("BCCH_TOKEN")
+    usuario, clave = os.getenv("BCCH_USER"), os.getenv("BCCH_PASS")
     run_id = f"manual__{datetime.now(timezone.utc):%Y-%m-%dT%H:%M:%S}"
     engine = get_engine()
 
     log.info("== VALIDAR ==")
     crear_modelo(engine)
-    validar_api(token)
+    validar_api(usuario, clave)
 
     log.info("== EXTRACT ==")
-    load_raw(engine, extract_series(token, desde, hasta), run_id)
+    load_raw(engine, extract_series(usuario, clave, desde, hasta), run_id)
 
     log.info("== TRANSFORM ==")
     observaciones = transform_observaciones(read_raw(engine, run_id))

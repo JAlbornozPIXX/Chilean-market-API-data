@@ -1,10 +1,6 @@
-# incluidas en la imagen apache/airflow:3.3.2-python3.11 (docker-compose.yml)
-apache-airflow==3.3.2
-apache-airflow-providers-celery
-apache-airflow-providers-fab
-apache-airflow-providers-postgres
-pandas
-sqlalchemy
-psycopg2-binary
+# solo para ejecutar los pipeline_*.py fuera de airflow (python 3.11 o superior)
+# airflow no se instala con pip: corre dentro de la imagen docker (docker-compose.yml)
+pandas>=2.2
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
 requests>=2.31
-pendulum
